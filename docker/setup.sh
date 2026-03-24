@@ -263,6 +263,8 @@ _run_project() {
     -v "${proj_dir}/workflow:/workflow:ro" \
     -v "${cname}-workspaces:/workspaces" \
     -v "${cname}-home:/home/agent" \
+    --security-opt apparmor=unconfined \
+    --security-opt seccomp=unconfined \
     symphony:latest
 }
 
@@ -421,9 +423,10 @@ agent:
 codex:
   command: codex app-server
   approval_policy: never
-  thread_sandbox: workspace-write
+  thread_sandbox: danger-full-access
   turn_sandbox_policy:
     type: workspaceWrite
+    networkAccess: true
 ---
 
 You are working on a Linear ticket \`{{ issue.identifier }}\`
