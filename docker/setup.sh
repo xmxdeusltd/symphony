@@ -48,9 +48,9 @@ die()   { err "$@"; exit 1; }
 ask() {
   local prompt="$1" default="${2:-}"
   if [[ -n "$default" ]]; then
-    printf "$(bold "$prompt") $(dim "[$default]"): "
+    printf "%s %s: " "$(bold "$prompt")" "$(dim "[$default]")"
   else
-    printf "$(bold "$prompt"): "
+    printf "%s: " "$(bold "$prompt")"
   fi
   read -r answer
   echo "${answer:-$default}"
