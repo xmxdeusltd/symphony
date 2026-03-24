@@ -298,8 +298,12 @@ cmd_setup() {
   project_slug=$(ask "  Linear project slug")
   [[ -z "$project_slug" ]] && die "Project slug is required."
   
+
+  echo
+  echo "  $(dim "Get your API key from Linear: Settings → Security → Personal API keys")"
+  echo
   local linear_key
-  linear_key=$(ask "  Linear API key (Settings → Security → Personal API keys)")
+  linear_key=$(ask "  Linear API key")
   [[ -z "$linear_key" ]] && die "Linear API key is required."
 
   echo
