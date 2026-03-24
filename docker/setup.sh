@@ -189,8 +189,8 @@ cmd_start() {
     echo
     echo "  Run these commands inside the container:"
     echo
-    echo "    $(bold "1.") $(green "codex login")            # OpenAI auth (uses your subscription)"
-    echo "    $(bold "2.") $(green "gh auth login")          # GitHub auth (device flow)"
+    echo "    $(bold "1.") $(green "codex login --device-auth")  # OpenAI auth — gives you a URL to open on your machine"
+    echo "    $(bold "2.") $(green "gh auth login -p https -h github.com")  # GitHub auth — device flow, gives you a code + URL"
     echo
     echo "  Then type $(bold "exit") to return here."
     echo
@@ -372,7 +372,7 @@ SYMPHONY_PORT=${port}
 CPU_LIMIT=${cpu}
 MEMORY_LIMIT=${mem}
 
-# OpenAI auth is handled via 'codex login' inside the container.
+# OpenAI auth is handled via 'codex login --device-auth' inside the container.
 # Set this only if you prefer API key auth instead:
 OPENAI_API_KEY=
 EOF
@@ -506,8 +506,8 @@ WORKFLOW_EOF
   echo
   echo "  Run these commands inside the container:"
   echo
-  echo "    $(bold "1.") $(green "codex login")            # OpenAI auth (uses your subscription)"
-  echo "    $(bold "2.") $(green "gh auth login")          # GitHub auth (device flow)"
+  echo "    $(bold "1.") $(green "codex login --device-auth")  # OpenAI auth — gives you a URL to open on your machine"
+  echo "    $(bold "2.") $(green "gh auth login -p https -h github.com")  # GitHub auth — device flow, gives you a code + URL"
   echo
   echo "  Then type $(bold "exit") to return here."
   echo

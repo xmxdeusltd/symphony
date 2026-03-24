@@ -90,8 +90,8 @@ All completely isolated from each other.
 
 Auth is handled via device login / browser flow — your existing subscriptions:
 
-- **Codex**: `codex login` inside the container (OpenAI subscription)
-- **GitHub**: `gh auth login` inside the container (device flow)
+- **Codex**: `codex login --device-auth` inside the container (OpenAI subscription)
+- **GitHub**: `gh auth login -p https -h github.com` inside the container (device flow)
 - **Linear**: API key provided during setup (manual — no subscription login available)
 
 Auth persists across container restarts via a named Docker volume for `/home/agent`.
@@ -100,8 +100,8 @@ To re-auth later:
 ```bash
 ./setup.sh --shell <name>
 # then inside:
-codex login
-gh auth login
+codex login --device-auth
+gh auth login -p https -h github.com
 ```
 
 ---
