@@ -173,6 +173,29 @@ cmd_start() {
     _run_project "$name"
   fi
   info "Started. Logs: ./setup.sh --logs ${name}"
+
+  # Check if auth is set up
+  local needs_auth=false
+  if ! docker exec "$cname" test -f /home/agent/.codex/auth.json 2>/dev/null; then
+    needs_auth=true
+  fi
+  if ! docker exec "$cname" gh auth status &>/dev/null 2>&1; then
+    needs_auth=true
+  fi
+
+  if $needs_auth; then
+    echo
+    warn "Auth not configured yet. Opening a shell for setup..."
+    echo
+    echo "  Run these commands inside the container:"
+    echo
+    echo "    $(bold "1.") $(green "codex login")            # OpenAI auth (uses your subscription)"
+    echo "    $(bold "2.") $(green "gh auth login")          # GitHub auth (device flow)"
+    echo
+    echo "  Then type $(bold "exit") to return here."
+    echo
+    docker exec -it "$cname" bash
+  fi
 }
 
 cmd_logs() {
