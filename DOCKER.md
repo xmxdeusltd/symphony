@@ -188,8 +188,8 @@ Or override in docker-compose:
 deploy:
   resources:
     limits:
-      cpus: "8"
-      memory: "16g"
+      cpus: "4"
+      memory: "8g"
 ```
 
 ---

@@ -25,8 +25,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "${CPU_LIMIT:-4}"
-          memory: "${MEMORY_LIMIT:-8g}"
+          cpus: "${CPU_LIMIT:-1}"
+          memory: "${MEMORY_LIMIT:-2g}"
 
 volumes:
   symphony-workspaces:
