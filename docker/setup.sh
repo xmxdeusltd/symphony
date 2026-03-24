@@ -19,6 +19,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECTS_DIR="${SCRIPT_DIR}/projects"
 DOCKER_CONTEXT="$(dirname "${SCRIPT_DIR}")"
 
+# ── Preflight ────────────────────────────────────────────────────────
+
+if ! command -v docker &>/dev/null; then
+  echo "Error: Docker is not installed."
+  echo "Install it from https://docs.docker.com/get-docker/"
+  exit 1
+fi
+
+if ! docker info &>/dev/null 2>&1; then
+  echo "Error: Docker daemon is not running. Start Docker and try again."
+  exit 1
+fi
+
 # ── Helpers ──────────────────────────────────────────────────────────
 
 bold()  { printf "\033[1m%s\033[0m" "$*"; }
@@ -258,6 +271,9 @@ cmd_setup() {
 
   # ── Step 2: Repository ─────────────────────────────────────────
   info "Step 2: Repository"
+  echo
+  echo "  $(dim "Use HTTPS (recommended) — GitHub auth inside the container handles access.")"
+  echo "  $(dim "SSH works too but requires mounting your SSH keys into the container.")"
   echo
   local repo_url
   repo_url=$(ask "  Git clone URL (HTTPS or SSH)")
