@@ -420,6 +420,8 @@ hooks:
 agent:
   max_concurrent_agents: 10
   max_turns: 20
+server:
+  host: "0.0.0.0"
 codex:
   command: codex app-server
   approval_policy: never
