@@ -425,7 +425,7 @@ codex:
   approval_policy: never
   thread_sandbox: danger-full-access
   turn_sandbox_policy:
-    type: workspaceWrite
+    type: dangerFullAccess
     networkAccess: true
 ---
 
