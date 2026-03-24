@@ -71,12 +71,14 @@ next_port() {
       # Also check if any project config already claims this port
       local claimed=false
       if [[ -d "$PROJECTS_DIR" ]]; then
-        for env_file in "$PROJECTS_DIR"/*/".env" 2>/dev/null; do
+        shopt -s nullglob
+        for env_file in "$PROJECTS_DIR"/*/".env"; do
           if [[ -f "$env_file" ]] && grep -q "SYMPHONY_PORT=${port}" "$env_file" 2>/dev/null; then
             claimed=true
             break
           fi
         done
+        shopt -u nullglob
       fi
       if ! $claimed; then
         echo "$port"
