@@ -45,8 +45,12 @@ RUN useradd -m -s /bin/bash agent && \
 # Copy the compiled Symphony escript from builder
 COPY --from=builder /build/bin/symphony /usr/local/bin/symphony
 
-# Copy Codex skills + reference WORKFLOW.md for auto-setup in target repos
+# Copy Codex skills for auto-setup in target repos
+# Start with the symphony originals (commit, debug, linear, pull are generic enough)
 COPY .codex/skills/ /opt/symphony/skills/
+# Override push and land with generic versions (no Elixir/Symphony-specific logic)
+COPY docker/skills-generic/push/ /opt/symphony/skills/push/
+COPY docker/skills-generic/land/ /opt/symphony/skills/land/
 COPY elixir/WORKFLOW.md /opt/symphony/WORKFLOW.reference.md
 # Copy mix project files needed at runtime
 COPY --from=builder /build/_build /opt/symphony/_build
