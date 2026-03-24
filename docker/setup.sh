@@ -48,9 +48,9 @@ die()   { err "$@"; exit 1; }
 ask() {
   local prompt="$1" default="${2:-}"
   if [[ -n "$default" ]]; then
-    printf "%s %s: " "$(bold "$prompt")" "$(dim "[$default]")"
+    printf "%s %s: " "$(bold "$prompt")" "$(dim "[$default]")" >&2
   else
-    printf "%s: " "$(bold "$prompt")"
+    printf "%s: " "$(bold "$prompt")" >&2
   fi
   read -r answer
   echo "${answer:-$default}"
@@ -320,6 +320,8 @@ cmd_setup() {
 
   # ── Step 5: Resources ─────────────────────────────────────────
   info "Step 5: Resources (optional)"
+  echo
+  echo "  $(dim "Defaults are fine for most projects. Just press Enter to accept.")"
   echo
   local cpu mem
   cpu=$(ask "  CPU cores" "1")
