@@ -1,7 +1,7 @@
 # Symphony Elixir — Dockerized Agent Sandbox
 # Multi-stage build: compile Symphony, then run in a slim image.
 
-FROM hexpm/elixir:1.19.5-erlang-28.0-ubuntu-noble-20250415.1 AS builder
+FROM hexpm/elixir:1.19.5-erlang-28.4.1-ubuntu-noble-20260217 AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git ca-certificates make && \
@@ -18,7 +18,7 @@ RUN mix build
 # ---------------------------------------------------------------------------
 # Runtime image
 # ---------------------------------------------------------------------------
-FROM hexpm/elixir:1.19.5-erlang-28.0-ubuntu-noble-20250415.1
+FROM hexpm/elixir:1.19.5-erlang-28.4.1-ubuntu-noble-20260217
 
 # Core tooling an agent needs inside the sandbox
 RUN apt-get update && apt-get install -y --no-install-recommends \
