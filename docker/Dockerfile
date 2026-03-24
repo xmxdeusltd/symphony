@@ -44,6 +44,10 @@ RUN useradd -m -s /bin/bash agent && \
 
 # Copy the compiled Symphony escript from builder
 COPY --from=builder /build/bin/symphony /usr/local/bin/symphony
+
+# Copy Codex skills + reference WORKFLOW.md for auto-setup in target repos
+COPY .codex/skills/ /opt/symphony/skills/
+COPY elixir/WORKFLOW.md /opt/symphony/WORKFLOW.reference.md
 # Copy mix project files needed at runtime
 COPY --from=builder /build/_build /opt/symphony/_build
 COPY --from=builder /build/deps /opt/symphony/deps

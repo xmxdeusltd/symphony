@@ -377,6 +377,21 @@ workspace:
 hooks:
   after_create: |
     git clone --depth 1 ${repo_url} .
+
+    # Auto-copy Codex skills if repo doesn't have them
+    for skill in commit debug land linear pull push; do
+      if [ ! -f ".codex/skills/\${skill}/SKILL.md" ]; then
+        mkdir -p ".codex/skills/\${skill}"
+        cp -r "/opt/symphony/skills/\${skill}/." ".codex/skills/\${skill}/"
+        echo "Copied skill: \${skill}"
+      fi
+    done
+
+    # Generate repo WORKFLOW.md if missing
+    if [ ! -f "WORKFLOW.md" ]; then
+      cp /workflow/WORKFLOW.md ./WORKFLOW.md
+      echo "Generated WORKFLOW.md in repo root"
+    fi
 agent:
   max_concurrent_agents: 10
   max_turns: 20
@@ -426,29 +441,20 @@ WORKFLOW_EOF
   bold "  Pre-flight Checklist"; echo
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   echo
-  echo "  Before starting Symphony, make sure your repo is ready:"
+  echo "  Before starting, make sure:"
   echo
   echo "  $(bold "1. Harness Engineering")"
   echo "     Your codebase should follow harness engineering practices."
   echo "     See: $(dim "https://openai.com/index/harness-engineering/")"
   echo
-  echo "  $(bold "2. WORKFLOW.md in your repo (optional but recommended)")"
-  echo "     A WORKFLOW.md has been generated at:"
-  echo "     $(dim "${proj_dir}/workflow/WORKFLOW.md")"
-  echo "     Review and customize it for your project."
-  echo
-  echo "  $(bold "3. Codex skills (optional)")"
-  echo "     Copy the .codex/skills/ directory from the symphony repo"
-  echo "     into your target repo for commit, push, pull, land, and"
-  echo "     linear skills:"
-  echo "     $(dim "cp -r $(dirname "$SCRIPT_DIR")/.codex/skills/ /path/to/${repo_short}/.codex/skills/")"
-  echo
-  echo "  $(bold "4. Linear workflow states")"
+  echo "  $(bold "2. Linear workflow states")"
   echo "     Add these custom states in Linear (Team Settings → Workflow)"
   echo "     under the \"Started\" category:"
   echo "     $(dim "• Rework")"
   echo "     $(dim "• Human Review")"
   echo "     $(dim "• Merging")"
+  echo
+  echo "  $(dim "Skills and WORKFLOW.md are auto-copied into your repo on first run.")"
   echo
 
   if ! ask_yn "  Ready to build and start?" "y"; then
