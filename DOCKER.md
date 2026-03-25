@@ -1,3 +1,35 @@
+# Conductor Docker Setup
+
+> Fork of [OpenAI Symphony](https://github.com/openai/symphony) with vendor-agnostic agent support.
+
+## What's New (vs Symphony Docker)
+
+- **Agent selection**: Choose Codex (OpenAI) or Hermes (any provider) during setup
+- **Hermes CLI**: Installed alongside Codex in the container
+- **MCP sidecar**: `conductor-mcp` CLI for external tool integration
+- **Hermes skills**: Agent-agnostic skills in `/opt/conductor/hermes-skills/`
+
+## Quick Start
+
+```bash
+cd docker/
+./setup.sh    # Interactive — asks for repo, Linear project, and agent choice
+```
+
+During setup, you'll be asked:
+```
+Agent Selection
+  1) Codex (OpenAI) — default, proven
+  2) Hermes (any provider) — vendor-agnostic
+Which agent? [1]:
+```
+
+If you choose Hermes, you'll also configure:
+- Provider (default: anthropic)
+- Model (default: claude-sonnet-4)
+
+---
+
 # Symphony Docker Setup
 
 Run Symphony in isolated Docker containers — one per repo/Linear project.

@@ -16,11 +16,13 @@ services:
       - LINEAR_API_KEY=${LINEAR_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GH_TOKEN=${GH_TOKEN:-}
+      - ANTHROPIC_API_KEY
     ports:
       - "${SYMPHONY_PORT:-4000}:4000"
     volumes:
       - ./workflow:/workflow:ro
       - symphony-workspaces:/workspaces
+      - agent-home:/home/agent    # Persist auth for both Codex and Hermes
     restart: unless-stopped
     deploy:
       resources:
@@ -30,3 +32,4 @@ services:
 
 volumes:
   symphony-workspaces:
+  agent-home:

@@ -189,7 +189,11 @@ cmd_start() {
     echo
     echo "  Run these commands inside the container:"
     echo
-    echo "    $(bold "1.") $(green "codex login --device-auth")  # OpenAI auth — gives you a URL to open on your machine"
+    if [ "${AGENT_KIND}" = "hermes" ]; then
+      echo "    $(bold "1.") $(green "hermes setup")  # Configure Hermes provider auth"
+    else
+      echo "    $(bold "1.") $(green "codex login --device-auth")  # OpenAI auth — gives you a URL to open on your machine"
+    fi
     echo "    $(bold "2.") $(green "gh auth login -p https -h github.com")  # GitHub auth — device flow, gives you a code + URL"
     echo
     echo "  Then type $(bold "exit") to return here."
@@ -333,6 +337,26 @@ cmd_setup() {
 
   echo
 
+  # ── Step 3b: Agent Selection ──────────────────────────────────
+  info "Agent Selection"
+  echo "  1) Codex (OpenAI) — default, proven"
+  echo "  2) Hermes (any provider) — vendor-agnostic"
+  AGENT_KIND=$(ask "  Which agent?" "1")
+  case "$AGENT_KIND" in
+    2|hermes|Hermes) AGENT_KIND="hermes" ;;
+    *) AGENT_KIND="codex" ;;
+  esac
+
+  HERMES_PROVIDER=""
+  HERMES_MODEL=""
+  if [ "$AGENT_KIND" = "hermes" ]; then
+    echo
+    HERMES_PROVIDER=$(ask "  Hermes provider" "anthropic")
+    HERMES_MODEL=$(ask "  Hermes model" "claude-sonnet-4")
+  fi
+
+  echo
+
   # ── Step 4: Auth ───────────────────────────────────────────────
   info "Step 4: Authentication"
   echo
@@ -377,8 +401,89 @@ MEMORY_LIMIT=${mem}
 OPENAI_API_KEY=
 EOF
 
-  # WORKFLOW.md — minimal template
-  cat > "${proj_dir}/workflow/WORKFLOW.md" <<WORKFLOW_EOF
+  # WORKFLOW.md — minimal template (agent-aware)
+  if [ "${AGENT_KIND}" = "hermes" ]; then
+    cat > "${proj_dir}/workflow/WORKFLOW.md" <<WORKFLOW_EOF
+---
+tracker:
+  kind: linear
+  project_slug: "${project_slug}"
+  active_states:
+    - Todo
+    - In Progress
+    - Merging
+    - Rework
+    - Human Review
+  terminal_states:
+    - Closed
+    - Cancelled
+    - Canceled
+    - Duplicate
+    - Done
+polling:
+  interval_ms: 30000
+workspace:
+  root: /workspaces
+hooks:
+  after_create: |
+    git clone --depth 1 ${repo_url} .
+
+    # Copy Hermes skills
+    if [ ! -d ".hermes/skills" ]; then
+      mkdir -p .hermes/skills
+      cp -r /opt/conductor/hermes-skills/. .hermes/skills/
+      echo "Copied Hermes skills"
+    fi
+
+    # Generate repo WORKFLOW.md if missing
+    if [ ! -f "WORKFLOW.md" ]; then
+      cp /workflow/WORKFLOW.md ./WORKFLOW.md
+      echo "Generated WORKFLOW.md in repo root"
+    fi
+agent:
+  kind: hermes
+  hermes_provider: ${HERMES_PROVIDER}
+  hermes_model: ${HERMES_MODEL}
+  hermes_skills: [commit, push, pull, land, linear, review]
+  hermes_toolsets: terminal,file,web
+  max_concurrent_agents: 10
+  max_turns: 20
+server:
+  host: "0.0.0.0"
+---
+
+You are working on a Linear ticket \`{{ issue.identifier }}\`
+
+{% if attempt %}
+Continuation context:
+
+- This is retry attempt #{{ attempt }} because the ticket is still in an active state.
+- Resume from the current workspace state instead of restarting from scratch.
+{% endif %}
+
+Issue context:
+Identifier: {{ issue.identifier }}
+Title: {{ issue.title }}
+Current status: {{ issue.state }}
+Labels: {{ issue.labels }}
+URL: {{ issue.url }}
+
+Description:
+{% if issue.description %}
+{{ issue.description }}
+{% else %}
+No description provided.
+{% endif %}
+
+Instructions:
+1. Work autonomously on the issue. Never ask a human to perform follow-up actions.
+2. Only stop early for a true blocker (missing required auth/permissions/secrets).
+3. Keep a single persistent workpad comment (\`## Hermes Workpad\`) updated with progress.
+
+Work only in the provided repository copy. Do not touch any other path.
+WORKFLOW_EOF
+  else
+    cat > "${proj_dir}/workflow/WORKFLOW.md" <<WORKFLOW_EOF
 ---
 tracker:
   kind: linear
@@ -418,6 +523,7 @@ hooks:
       echo "Generated WORKFLOW.md in repo root"
     fi
 agent:
+  kind: codex
   max_concurrent_agents: 10
   max_turns: 20
 server:
@@ -461,6 +567,7 @@ Instructions:
 
 Work only in the provided repository copy. Do not touch any other path.
 WORKFLOW_EOF
+  fi
 
   info "Project files created at ${proj_dir}/"
 
@@ -508,7 +615,11 @@ WORKFLOW_EOF
   echo
   echo "  Run these commands inside the container:"
   echo
-  echo "    $(bold "1.") $(green "codex login --device-auth")  # OpenAI auth — gives you a URL to open on your machine"
+  if [ "${AGENT_KIND}" = "hermes" ]; then
+    echo "    $(bold "1.") $(green "hermes setup")  # Configure Hermes provider auth"
+  else
+    echo "    $(bold "1.") $(green "codex login --device-auth")  # OpenAI auth — gives you a URL to open on your machine"
+  fi
   echo "    $(bold "2.") $(green "gh auth login -p https -h github.com")  # GitHub auth — device flow, gives you a code + URL"
   echo
   echo "  Then type $(bold "exit") to return here."

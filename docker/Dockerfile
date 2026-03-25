@@ -38,6 +38,14 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 # Codex CLI (OpenAI)
 RUN npm install -g @openai/codex
 
+# Hermes Agent CLI (installed from GitHub — not on PyPI)
+RUN pip3 install --no-cache-dir --break-system-packages \
+      git+https://github.com/NousResearch/hermes-agent.git
+
+# Conductor MCP sidecar
+COPY mcp-sidecar/ /opt/conductor-mcp/
+RUN pip3 install --no-cache-dir --break-system-packages -e /opt/conductor-mcp
+
 # Non-root user with passwordless sudo (agent gets full root when needed)
 RUN useradd -m -s /bin/bash agent && \
     echo "agent ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
@@ -51,6 +59,8 @@ COPY .codex/skills/ /opt/symphony/skills/
 # Override push and land with generic versions (no Elixir/Symphony-specific logic)
 COPY docker/skills-generic/push/ /opt/symphony/skills/push/
 COPY docker/skills-generic/land/ /opt/symphony/skills/land/
+# Copy Hermes agent skills
+COPY .hermes/skills/ /opt/conductor/hermes-skills/
 COPY elixir/WORKFLOW.md /opt/symphony/WORKFLOW.reference.md
 # Copy mix project files needed at runtime
 COPY --from=builder /build/_build /opt/symphony/_build
