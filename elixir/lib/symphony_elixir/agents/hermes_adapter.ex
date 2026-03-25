@@ -179,4 +179,3 @@ defmodule SymphonyElixir.Agents.HermesAdapter do
     end
   end
 end
-ELIXIR_EOF; __hermes_rc=$?; printf '__HERMES_FENCE_a9f7b3__'; exit $__hermes_rc
