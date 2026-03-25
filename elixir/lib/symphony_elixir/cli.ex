@@ -11,10 +11,10 @@ defmodule SymphonyElixir.CLI do
   @type ensure_started_result :: {:ok, [atom()]} | {:error, term()}
   @type deps :: %{
           file_regular?: (String.t() -> boolean()),
-          set_workflow_file_path: (String.t() -> :ok | {:error, term()}),
           set_logs_root: (String.t() -> :ok | {:error, term()}),
           set_server_port_override: (non_neg_integer() | nil -> :ok | {:error, term()}),
-          ensure_all_started: (-> ensure_started_result())
+          ensure_all_started: (-> ensure_started_result()),
+          start_repo: (map() -> {:ok, pid()} | {:error, term()})
         }
 
   @spec main([String.t()]) :: no_return()
@@ -58,14 +58,17 @@ defmodule SymphonyElixir.CLI do
     expanded_path = Path.expand(workflow_path)
 
     if deps.file_regular?.(expanded_path) do
-      :ok = deps.set_workflow_file_path.(expanded_path)
-
       case deps.ensure_all_started.() do
         {:ok, _started_apps} ->
-          :ok
+          # Start the single workflow as a repo named "default"
+          case deps.start_repo.(%{name: "default", workflow: expanded_path}) do
+            {:ok, _pid} -> :ok
+            {:error, {:already_started, _pid}} -> :ok
+            {:error, reason} -> {:error, "Failed to start orchestrator: #{inspect(reason)}"}
+          end
 
         {:error, reason} ->
-          {:error, "Failed to start Symphony with workflow #{expanded_path}: #{inspect(reason)}"}
+          {:error, "Failed to start Conductor: #{inspect(reason)}"}
       end
     else
       {:error, "Workflow file not found: #{expanded_path}"}
@@ -81,10 +84,10 @@ defmodule SymphonyElixir.CLI do
   defp runtime_deps do
     %{
       file_regular?: &File.regular?/1,
-      set_workflow_file_path: &SymphonyElixir.Workflow.set_workflow_file_path/1,
       set_logs_root: &set_logs_root/1,
       set_server_port_override: &set_server_port_override/1,
-      ensure_all_started: fn -> Application.ensure_all_started(:symphony_elixir) end
+      ensure_all_started: fn -> Application.ensure_all_started(:symphony_elixir) end,
+      start_repo: &SymphonyElixir.MultiRepoSupervisor.start_repo/1
     }
   end
 

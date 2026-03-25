@@ -8,7 +8,7 @@ defmodule SymphonyElixir do
   """
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) do
-    SymphonyElixir.Orchestrator.start_link(opts)
+    SymphonyElixir.MultiRepoSupervisor.start_link(opts)
   end
 end
 
@@ -27,7 +27,6 @@ defmodule SymphonyElixir.Application do
       {Phoenix.PubSub, name: SymphonyElixir.PubSub},
       {Task.Supervisor, name: SymphonyElixir.TaskSupervisor},
       SymphonyElixir.WorkflowStore,
-      SymphonyElixir.Orchestrator,
       SymphonyElixir.HttpServer,
       SymphonyElixir.StatusDashboard,
       SymphonyElixir.MultiRepoSupervisor
