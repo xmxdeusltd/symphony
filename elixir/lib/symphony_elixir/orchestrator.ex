@@ -36,6 +36,8 @@ defmodule SymphonyElixir.Orchestrator do
       running: %{},
       completed: MapSet.new(),
       claimed: MapSet.new(),
+      workflow_store: nil,
+      repo_name: nil,
       retry_attempts: %{},
       agent_totals: nil,
       agent_rate_limits: nil
@@ -49,7 +51,12 @@ defmodule SymphonyElixir.Orchestrator do
   end
 
   @impl true
-  def init(_opts) do
+  def init(opts) do
+    workflow_store = Keyword.get(opts, :workflow_store)
+    repo_name = Keyword.get(opts, :repo_name)
+
+    if workflow_store, do: Process.put(:conductor_workflow_store, workflow_store)
+
     now_ms = System.monotonic_time(:millisecond)
     config = Config.settings!()
 
@@ -61,7 +68,9 @@ defmodule SymphonyElixir.Orchestrator do
       tick_timer_ref: nil,
       tick_token: nil,
       agent_totals: @empty_agent_totals,
-      agent_rate_limits: nil
+      agent_rate_limits: nil,
+      workflow_store: workflow_store,
+      repo_name: repo_name
     }
 
     run_terminal_workspace_cleanup()
@@ -73,6 +82,7 @@ defmodule SymphonyElixir.Orchestrator do
   @impl true
   def handle_info({:tick, tick_token}, %{tick_token: tick_token} = state)
       when is_reference(tick_token) do
+    if state.workflow_store, do: Process.put(:conductor_workflow_store, state.workflow_store)
     state = refresh_runtime_config(state)
 
     state = %{
@@ -91,6 +101,7 @@ defmodule SymphonyElixir.Orchestrator do
   def handle_info({:tick, _tick_token}, state), do: {:noreply, state}
 
   def handle_info(:tick, state) do
+    if state.workflow_store, do: Process.put(:conductor_workflow_store, state.workflow_store)
     state = refresh_runtime_config(state)
 
     state = %{
@@ -107,6 +118,7 @@ defmodule SymphonyElixir.Orchestrator do
   end
 
   def handle_info(:run_poll_cycle, state) do
+    if state.workflow_store, do: Process.put(:conductor_workflow_store, state.workflow_store)
     state = refresh_runtime_config(state)
     state = maybe_dispatch(state)
     state = schedule_tick(state, state.poll_interval_ms)
@@ -204,6 +216,7 @@ defmodule SymphonyElixir.Orchestrator do
   def handle_info({:agent_worker_update, _issue_id, _update}, state), do: {:noreply, state}
 
   def handle_info({:retry_issue, issue_id, retry_token}, state) do
+    if state.workflow_store, do: Process.put(:conductor_workflow_store, state.workflow_store)
     result =
       case pop_retry_attempt_state(state, issue_id, retry_token) do
         {:ok, attempt, metadata, state} -> handle_retry_issue(state, issue_id, attempt, metadata)
@@ -691,7 +704,9 @@ defmodule SymphonyElixir.Orchestrator do
   end
 
   defp spawn_issue_on_worker_host(%State{} = state, issue, attempt, recipient, worker_host) do
+    workflow_store = state.workflow_store
     case Task.Supervisor.start_child(SymphonyElixir.TaskSupervisor, fn ->
+           if workflow_store, do: Process.put(:conductor_workflow_store, workflow_store)
            AgentRunner.run(issue, recipient, attempt: attempt, worker_host: worker_host)
          end) do
       {:ok, pid} ->

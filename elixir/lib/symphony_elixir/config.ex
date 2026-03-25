@@ -28,7 +28,12 @@ defmodule SymphonyElixir.Config do
 
   @spec settings() :: {:ok, Schema.t()} | {:error, term()}
   def settings do
-    case Workflow.current() do
+    workflow_result = case Process.get(:conductor_workflow_store) do
+      nil -> Workflow.current()
+      store_name -> SymphonyElixir.WorkflowStore.current(store_name)
+    end
+
+    case workflow_result do
       {:ok, %{config: config}} when is_map(config) ->
         Schema.parse(config)
 
@@ -74,7 +79,12 @@ defmodule SymphonyElixir.Config do
 
   @spec workflow_prompt() :: String.t()
   def workflow_prompt do
-    case Workflow.current() do
+    workflow_result = case Process.get(:conductor_workflow_store) do
+      nil -> Workflow.current()
+      store_name -> SymphonyElixir.WorkflowStore.current(store_name)
+    end
+
+    case workflow_result do
       {:ok, %{prompt_template: prompt}} ->
         if String.trim(prompt) == "", do: @default_prompt_template, else: prompt
 

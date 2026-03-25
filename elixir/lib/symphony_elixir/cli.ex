@@ -6,7 +6,7 @@ defmodule SymphonyElixir.CLI do
   alias SymphonyElixir.LogFile
 
   @acknowledgement_switch :i_understand_that_this_will_be_running_without_the_usual_guardrails
-  @switches [{@acknowledgement_switch, :boolean}, logs_root: :string, port: :integer]
+  @switches [{@acknowledgement_switch, :boolean}, logs_root: :string, port: :integer, conductor_config: :string]
 
   @type ensure_started_result :: {:ok, [atom()]} | {:error, term()}
   @type deps :: %{
@@ -35,15 +35,17 @@ defmodule SymphonyElixir.CLI do
       {opts, [], []} ->
         with :ok <- require_guardrails_acknowledgement(opts),
              :ok <- maybe_set_logs_root(opts, deps),
-             :ok <- maybe_set_server_port(opts, deps) do
-          run(Path.expand("WORKFLOW.md"), deps)
+             :ok <- maybe_set_server_port(opts, deps),
+             :ok <- run(Path.expand("WORKFLOW.md"), deps) do
+          maybe_start_conductor_repos(opts)
         end
 
       {opts, [workflow_path], []} ->
         with :ok <- require_guardrails_acknowledgement(opts),
              :ok <- maybe_set_logs_root(opts, deps),
-             :ok <- maybe_set_server_port(opts, deps) do
-          run(workflow_path, deps)
+             :ok <- maybe_set_server_port(opts, deps),
+             :ok <- run(workflow_path, deps) do
+          maybe_start_conductor_repos(opts)
         end
 
       _ ->
@@ -72,7 +74,7 @@ defmodule SymphonyElixir.CLI do
 
   @spec usage_message() :: String.t()
   defp usage_message do
-    "Usage: symphony [--logs-root <path>] [--port <port>] [path-to-WORKFLOW.md]"
+    "Usage: symphony [--logs-root <path>] [--port <port>] [--conductor-config <path>] [path-to-WORKFLOW.md]"
   end
 
   @spec runtime_deps() :: deps()
@@ -167,6 +169,34 @@ defmodule SymphonyElixir.CLI do
   defp set_server_port_override(port) when is_integer(port) and port >= 0 do
     Application.put_env(:symphony_elixir, :server_port_override, port)
     :ok
+  end
+
+  defp maybe_start_conductor_repos(opts) do
+    case Keyword.get(opts, :conductor_config) do
+      nil ->
+        :ok
+
+      config_path ->
+        expanded = Path.expand(config_path)
+
+        case SymphonyElixir.ConductorConfig.load(expanded) do
+          {:ok, repos} ->
+            Enum.each(repos, fn repo ->
+              case SymphonyElixir.MultiRepoSupervisor.start_repo(repo) do
+                {:ok, _pid} ->
+                  IO.puts("Started conductor repo: #{repo.name}")
+
+                {:error, reason} ->
+                  IO.puts(:stderr, "Failed to start conductor repo #{repo.name}: #{inspect(reason)}")
+              end
+            end)
+
+            :ok
+
+          {:error, reason} ->
+            {:error, "Failed to load conductor config #{expanded}: #{inspect(reason)}"}
+        end
+    end
   end
 
   @spec wait_for_shutdown() :: no_return()

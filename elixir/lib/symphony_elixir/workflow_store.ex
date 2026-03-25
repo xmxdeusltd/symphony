@@ -13,19 +13,25 @@ defmodule SymphonyElixir.WorkflowStore do
   defmodule State do
     @moduledoc false
 
-    defstruct [:path, :stamp, :workflow]
+    defstruct [:path, :stamp, :workflow, :name, :workflow_path]
   end
 
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) do
-    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+    name = Keyword.get(opts, :name, __MODULE__)
+    GenServer.start_link(__MODULE__, opts, name: name)
   end
 
   @spec current() :: {:ok, Workflow.loaded_workflow()} | {:error, term()}
   def current do
-    case Process.whereis(__MODULE__) do
+    current(__MODULE__)
+  end
+
+  @spec current(GenServer.server()) :: {:ok, Workflow.loaded_workflow()} | {:error, term()}
+  def current(name) do
+    case Process.whereis(name) do
       pid when is_pid(pid) ->
-        GenServer.call(__MODULE__, :current)
+        GenServer.call(name, :current)
 
       _ ->
         Workflow.load()
@@ -34,9 +40,14 @@ defmodule SymphonyElixir.WorkflowStore do
 
   @spec force_reload() :: :ok | {:error, term()}
   def force_reload do
-    case Process.whereis(__MODULE__) do
+    force_reload(__MODULE__)
+  end
+
+  @spec force_reload(GenServer.server()) :: :ok | {:error, term()}
+  def force_reload(name) do
+    case Process.whereis(name) do
       pid when is_pid(pid) ->
-        GenServer.call(__MODULE__, :force_reload)
+        GenServer.call(name, :force_reload)
 
       _ ->
         case Workflow.load() do
@@ -47,11 +58,15 @@ defmodule SymphonyElixir.WorkflowStore do
   end
 
   @impl true
-  def init(_opts) do
-    case load_state(Workflow.workflow_file_path()) do
+  def init(opts) do
+    name = Keyword.get(opts, :name, __MODULE__)
+    workflow_path = Keyword.get(opts, :workflow_path)
+    initial_path = workflow_path || Workflow.workflow_file_path()
+
+    case load_state(initial_path) do
       {:ok, state} ->
         schedule_poll()
-        {:ok, state}
+        {:ok, %{state | name: name, workflow_path: workflow_path}}
 
       {:error, reason} ->
         {:stop, reason}
@@ -94,7 +109,7 @@ defmodule SymphonyElixir.WorkflowStore do
   end
 
   defp reload_state(%State{} = state) do
-    path = Workflow.workflow_file_path()
+    path = if state.workflow_path, do: state.workflow_path, else: Workflow.workflow_file_path()
 
     if path != state.path do
       reload_path(path, state)
@@ -106,7 +121,7 @@ defmodule SymphonyElixir.WorkflowStore do
   defp reload_path(path, state) do
     case load_state(path) do
       {:ok, new_state} ->
-        {:ok, new_state}
+        {:ok, %{new_state | name: state.name, workflow_path: state.workflow_path}}
 
       {:error, reason} ->
         log_reload_error(path, reason)
