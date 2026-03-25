@@ -6,55 +6,48 @@
 
 ## System Overview
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    CONDUCTOR (Single BEAM VM)                       │
-│                                                                     │
-│  ┌─────────────────────────────────────────────────────────────┐   │
-│  │                  Application Supervisor                      │   │
-│  │                  (one_for_one strategy)                       │   │
-│  │                                                               │   │
-│  │  ┌──────────┐ ┌────────────┐ ┌──────────┐ ┌──────────────┐  │   │
-│  │  │ PubSub   │ │ Task.Sup   │ │ HTTP     │ │ Status       │  │   │
-│  │  │          │ │ (workers)  │ │ Server   │ │ Dashboard    │  │   │
-│  │  └──────────┘ └────────────┘ └──────────┘ └──────────────┘  │   │
-│  │                                                               │   │
-│  │  ┌───────────────┐  ┌───────────────────────────────────┐    │   │
-│  │  │ WorkflowStore │  │      MultiRepoSupervisor          │    │   │
-│  │  │ (singleton,   │  │      (DynamicSupervisor)           │    │   │
-│  │  │  single-repo  │  │                                     │    │   │
-│  │  │  mode)        │  │  ┌─────────────────────────────┐   │    │   │
-│  │  └───────────────┘  │  │ RepoSupervisor "api-service"│   │    │   │
-│  │                      │  │  ┌─────────────┐ ┌────────┐│   │    │   │
-│  │  ┌───────────────┐  │  │  │WorkflowStore│ │Orchestr.││   │    │   │
-│  │  │ Orchestrator  │  │  │  │ (named)     │ │(named)  ││   │    │   │
-│  │  │ (singleton,   │  │  │  └─────────────┘ └────────┘│   │    │   │
-│  │  │  single-repo  │  │  └─────────────────────────────┘   │    │   │
-│  │  │  mode)        │  │                                     │    │   │
-│  │  └───────────────┘  │  ┌─────────────────────────────┐   │    │   │
-│  │                      │  │ RepoSupervisor "frontend"   │   │    │   │
-│  │                      │  │  ┌─────────────┐ ┌────────┐│   │    │   │
-│  │                      │  │  │WorkflowStore│ │Orchestr.││   │    │   │
-│  │                      │  │  │ (named)     │ │(named)  ││   │    │   │
-│  │                      │  │  └─────────────┘ └────────┘│   │    │   │
-│  │                      │  └─────────────────────────────┘   │    │   │
-│  │                      └───────────────────────────────────┘    │   │
-│  └───────────────────────────────────────────────────────────────┘   │
-│                                                                     │
-│  ┌──────────────────────────────────────────────────────────────┐   │
-│  │                    Phoenix Endpoints                          │   │
-│  │  GET  /              — LiveView Dashboard                     │   │
-│  │  GET  /api/v1/state  — JSON state dump                        │   │
-│  │  (future) /mcp       — MCP server (Phase 4)                   │   │
-│  └──────────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph BEAM["CONDUCTOR (Single BEAM VM)"]
+        subgraph AppSup["Application Supervisor (one_for_one)"]
+            PubSub["Phoenix.PubSub"]
+            TaskSup["Task.Supervisor<br/>(agent workers)"]
+            HTTP["HTTP Server<br/>(Phoenix)"]
+            Dashboard["Status Dashboard<br/>(LiveView)"]
+
+            subgraph SingleRepo["Single-Repo Mode"]
+                WS_S["WorkflowStore<br/>(singleton)"]
+                Orch_S["Orchestrator<br/>(singleton)"]
+            end
+
+            subgraph MRS["MultiRepoSupervisor (DynamicSupervisor)"]
+                subgraph Repo1["RepoSupervisor: api-service"]
+                    WS1["WorkflowStore<br/>:conductor_workflow_api-service"]
+                    Orch1["Orchestrator<br/>:conductor_orchestrator_api-service"]
+                end
+                subgraph Repo2["RepoSupervisor: frontend"]
+                    WS2["WorkflowStore<br/>:conductor_workflow_frontend"]
+                    Orch2["Orchestrator<br/>:conductor_orchestrator_frontend"]
+                end
+            end
+        end
+
+        subgraph Phoenix["Phoenix Endpoints"]
+            EP1["GET / — LiveView Dashboard"]
+            EP2["GET /api/v1/state — JSON"]
+            EP3["(future) /mcp — MCP Server"]
+        end
+    end
+
+    style SingleRepo fill:#2d5016,stroke:#4a8529
+    style MRS fill:#1a3a5c,stroke:#2d6ca3
+    style Repo1 fill:#1e3048,stroke:#2d6ca3
+    style Repo2 fill:#1e3048,stroke:#2d6ca3
 ```
 
 **Two modes:**
-- **Single-repo mode** (backward compat): Singleton WorkflowStore + Orchestrator.
-  Activated by: `symphony WORKFLOW.md`
-- **Multi-repo mode**: MultiRepoSupervisor spawns per-repo process pairs.
-  Activated by: `symphony --conductor-config conductor.yaml`
+- **Single-repo mode** (backward compat): Singleton WorkflowStore + Orchestrator. Activated by: `symphony WORKFLOW.md`
+- **Multi-repo mode**: MultiRepoSupervisor spawns per-repo process pairs. Activated by: `symphony --conductor-config conductor.yaml`
 
 Both can coexist — the singleton handles one repo, MultiRepoSupervisor handles additional repos.
 
@@ -62,177 +55,153 @@ Both can coexist — the singleton handles one repo, MultiRepoSupervisor handles
 
 ## Orchestration Flow
 
-```
-                        ┌──────────────┐
-                        │   Linear API  │
-                        └──────┬───────┘
-                               │ poll every N ms
-                               ▼
-                    ┌──────────────────────┐
-                    │    Orchestrator      │
-                    │    (GenServer)        │
-                    │                      │
-                    │  State:              │
-                    │    running: %{}      │
-                    │    retry_queue: %{}  │
-                    │    agent_totals: %{} │
-                    │    workflow_store: …  │
-                    │    repo_name: …      │
-                    └──────────┬───────────┘
-                               │
-              ┌────────────────┼────────────────┐
-              │                │                │
-              ▼                ▼                ▼
-        ┌──────────┐    ┌──────────┐    ┌──────────┐
-        │ Filter   │    │ Dispatch │    │Reconcile │
-        │ eligible │    │ new work │    │ terminal │
-        │ issues   │    │          │    │ issues   │
-        └──────────┘    └─────┬────┘    └──────────┘
-                              │
-                              ▼
-                    ┌──────────────────┐
-                    │  AgentRunner     │
-                    │  (spawned Task)  │
-                    └────────┬─────────┘
-                             │
-                    ┌────────┴────────┐
-                    │                 │
-                    ▼                 ▼
-            ┌──────────────┐  ┌──────────────┐
-            │ Workspace    │  │ Adapter      │
-            │ .create()    │  │ .start()     │
-            │ .run_hooks() │  │ .run_turn()  │
-            └──────────────┘  │ .stop()      │
-                              └──────────────┘
+```mermaid
+flowchart TD
+    Linear["Linear API"] -->|poll every N ms| Orch
+
+    subgraph Orch["Orchestrator (GenServer)"]
+        State["State:<br/>running: %{}<br/>retry_queue: %{}<br/>agent_totals: %{}<br/>workflow_store: …<br/>repo_name: …"]
+    end
+
+    Orch --> Filter["Filter eligible issues<br/>(active state, not running,<br/>concurrency < max)"]
+    Orch --> Reconcile["Reconcile terminal issues<br/>(stop agents, clean workspaces)"]
+    Orch --> Stall["Stall detection<br/>(kill inactive agents)"]
+
+    Filter --> Dispatch["Dispatch new work"]
+    Dispatch --> Runner["AgentRunner<br/>(spawned Task)"]
+
+    Runner --> Workspace["Workspace<br/>.create_for_issue()<br/>.run_hooks()"]
+    Runner --> Adapter["AgentAdapter<br/>.start_session()<br/>.run_turn()<br/>.stop_session()"]
+
+    Adapter -->|on_message| Orch
 ```
 
 ### Poll Cycle Detail
 
-```
-:tick
-  │
-  ├─ Process.put(:conductor_workflow_store, state.workflow_store)
-  │  (ensures Config.settings!() returns this repo's config)
-  │
-  ├─ refresh_runtime_config(state)
-  │
-  ├─ Tracker.fetch_active_issues()
-  │    │
-  │    └─ Filter: not already running, not in retry cooldown,
-  │       concurrency < max, state in active_states
-  │
-  ├─ For each eligible issue:
-  │    │
-  │    └─ Task.Supervisor.async_nolink(fn ->
-  │         Process.put(:conductor_workflow_store, workflow_store)
-  │         AgentRunner.run(issue, self(), opts)
-  │       end)
-  │
-  ├─ Reconcile: stop agents for issues moved to terminal states
-  │
-  ├─ Stall detection: kill agents with no activity > stall_timeout_ms
-  │
-  └─ Schedule next :tick
+```mermaid
+flowchart TD
+    Tick[":tick message"] --> ProcDict["Process.put(:conductor_workflow_store,<br/>state.workflow_store)"]
+    ProcDict --> Refresh["refresh_runtime_config(state)"]
+    Refresh --> Fetch["Tracker.fetch_active_issues()"]
+    Fetch --> FilterStep["Filter:<br/>• not already running<br/>• not in retry cooldown<br/>• concurrency &lt; max<br/>• state in active_states"]
+    FilterStep --> SpawnLoop["For each eligible issue"]
+
+    SpawnLoop --> TaskSpawn["Task.Supervisor.async_nolink(fn -><br/>  Process.put(:conductor_workflow_store, ws)<br/>  AgentRunner.run(issue, self(), opts)<br/>end)"]
+
+    Fetch --> ReconcileStep["Reconcile: stop agents for<br/>issues in terminal states"]
+    Fetch --> StallStep["Stall detection: kill agents<br/>with no activity > timeout"]
+
+    StallStep --> Schedule["Schedule next :tick"]
+    ReconcileStep --> Schedule
+    TaskSpawn --> Schedule
 ```
 
 ---
 
 ## Agent Adapter Layer
 
-```
-                    ┌─────────────────────┐
-                    │   AgentAdapter      │
-                    │   (behaviour)        │
-                    │                     │
-                    │  start_session/2    │
-                    │  run_turn/4         │
-                    │  stop_session/1     │
-                    │  normalize_update/1 │
-                    └─────────┬───────────┘
-                              │
-                 ┌────────────┼────────────┐
-                 │                         │
-                 ▼                         ▼
-    ┌────────────────────┐    ┌────────────────────┐
-    │   CodexAdapter     │    │   HermesAdapter    │
-    │   (default)        │    │                    │
-    │                    │    │                    │
-    │  Wraps AppServer   │    │  Spawns            │
-    │  JSON-RPC 2.0      │    │  hermes chat -q    │
-    │  over stdio        │    │  per turn          │
-    │                    │    │                    │
-    │  Persistent Port   │    │  Stateless between │
-    │  across turns      │    │  turns, resumes    │
-    │                    │    │  via --resume <id>  │
-    └────────────────────┘    └────────────────────┘
+```mermaid
+classDiagram
+    class AgentAdapter {
+        <<behaviour>>
+        +start_session(workspace, opts) session
+        +run_turn(session, prompt, issue, opts) result
+        +stop_session(session) ok
+        +normalize_update(update) update
+    }
 
-    Protocol:                  Protocol:
-    initialize                 hermes chat -q "prompt"
-    thread/start                 -Q --yolo
-    turn/start                   --resume <session_id>
-    turn/* events                --provider/--model
-    turn/completed               --skills/--toolsets
-                               stdout → parse session_id
+    class CodexAdapter {
+        Wraps AppServer
+        JSON-RPC 2.0 over stdio
+        Persistent Port across turns
+    }
+
+    class HermesAdapter {
+        Spawns hermes chat -q per turn
+        Stateless between turns
+        Resumes via --resume session_id
+    }
+
+    class FutureAdapter {
+        <<planned>>
+        Claude Code / Factory Droid
+        Generic CLI
+    }
+
+    AgentAdapter <|.. CodexAdapter : implements
+    AgentAdapter <|.. HermesAdapter : implements
+    AgentAdapter <|.. FutureAdapter : implements
+```
+
+### Agent Protocol Comparison
+
+```mermaid
+graph LR
+    subgraph Codex["CodexAdapter (default)"]
+        C1["initialize"] --> C2["thread/start"]
+        C2 --> C3["turn/start"]
+        C3 --> C4["turn/* events<br/>(streaming)"]
+        C4 --> C5["turn/completed"]
+        C5 -->|"next turn"| C3
+        C5 --> C6["close Port"]
+    end
+
+    subgraph Hermes["HermesAdapter"]
+        H1["store config<br/>(no process)"] --> H2["spawn hermes chat -q<br/>--output-format text<br/>-Q --yolo"]
+        H2 --> H3["capture stdout"]
+        H3 --> H4["parse session_id"]
+        H4 -->|"next turn<br/>--resume id"| H2
+        H4 --> H5["process exits<br/>(noop stop)"]
+    end
 ```
 
 ### Agent Turn Lifecycle
 
-```
-AgentRunner.run(issue, orchestrator_pid, opts)
-  │
-  ├─ adapter = Config.agent_adapter()
-  │   ├─ agent.kind == "codex"  → CodexAdapter
-  │   └─ agent.kind == "hermes" → HermesAdapter
-  │
-  ├─ adapter.start_session(workspace, opts)
-  │   ├─ Codex:  Opens Port, JSON-RPC initialize + thread/start
-  │   └─ Hermes: Stores config (no process spawned yet)
-  │
-  ├─ Loop (up to max_turns):
-  │   │
-  │   ├─ prompt = PromptBuilder.build_prompt(issue, opts)
-  │   │
-  │   ├─ adapter.run_turn(session, prompt, issue, opts)
-  │   │   ├─ Codex:  turn/start → stream events → turn/completed
-  │   │   └─ Hermes: spawn process → capture stdout → parse session_id
-  │   │
-  │   ├─ on_message callback → {:agent_worker_update, issue_id, msg}
-  │   │   → Orchestrator updates running entry metrics
-  │   │
-  │   ├─ Update session (thread session_id for Hermes)
-  │   │   session = Map.merge(session, Map.take(result, [:session_id]))
-  │   │
-  │   ├─ Check: is issue still in active state?
-  │   │   ├─ Yes + turns remaining → continue loop
-  │   │   ├─ Yes + max turns reached → return :ok (orchestrator retries)
-  │   │   └─ No (terminal/moved) → return :ok (done)
-  │   │
-  │   └─ (loop)
-  │
-  └─ adapter.stop_session(session)
-      ├─ Codex:  Close Port
-      └─ Hermes: noop (process already exited)
+```mermaid
+sequenceDiagram
+    participant O as Orchestrator
+    participant R as AgentRunner (Task)
+    participant A as Adapter
+    participant Agent as Coding Agent
+
+    O->>R: spawn task (issue, opts)
+    R->>R: adapter = Config.agent_adapter()
+    R->>A: start_session(workspace, opts)
+    A-->>R: {:ok, session}
+
+    loop up to max_turns
+        R->>R: prompt = PromptBuilder.build(issue)
+        R->>A: run_turn(session, prompt, issue, opts)
+        A->>Agent: launch (Port / CLI)
+        Agent-->>A: streaming events / stdout
+        A->>O: on_message → {:agent_worker_update, ...}
+        A-->>R: {:ok, turn_result}
+        R->>R: session = merge(session, turn_result[:session_id])
+        R->>R: check: issue still active?
+        Note over R: break if terminal or max turns
+    end
+
+    R->>A: stop_session(session)
+    A-->>R: :ok
 ```
 
 ---
 
 ## Config Resolution
 
-```
-Config.settings!() called
-  │
-  ├─ Check Process.get(:conductor_workflow_store)
-  │   │
-  │   ├─ nil (single-repo mode):
-  │   │   └─ Workflow.current()
-  │   │       └─ WorkflowStore (singleton, __MODULE__)
-  │   │           └─ Reads from Application.get_env(:workflow_file_path)
-  │   │
-  │   └─ :"conductor_workflow_<name>" (multi-repo mode):
-  │       └─ WorkflowStore.current(store_name)
-  │           └─ Named GenServer reads its own WORKFLOW.md path
-  │
-  └─ Schema.parse(config) → typed settings struct
+```mermaid
+flowchart TD
+    Call["Config.settings!() called"] --> Check{"Process.get<br/>(:conductor_workflow_store)"}
+
+    Check -->|nil<br/>single-repo mode| WC["Workflow.current()"]
+    WC --> WS_Single["WorkflowStore (singleton)<br/>reads Application.get_env<br/>(:workflow_file_path)"]
+
+    Check -->|":conductor_workflow_&lt;name&gt;"<br/>multi-repo mode| WCN["WorkflowStore.current(name)"]
+    WCN --> WS_Named["Named GenServer<br/>reads its own WORKFLOW.md path"]
+
+    WS_Single --> Parse["Schema.parse(config)"]
+    WS_Named --> Parse
+    Parse --> Settings["Typed settings struct"]
 ```
 
 ### WORKFLOW.md Config Schema
@@ -310,16 +279,7 @@ conductor/
 │       └── review/SKILL.md
 ├── .codex/
 │   └── skills/                     # Codex-specific skills (upstream)
-│       ├── commit/SKILL.md
-│       ├── push/SKILL.md
-│       ├── pull/SKILL.md
-│       ├── land/SKILL.md
-│       ├── linear/SKILL.md
-│       └── debug/SKILL.md
 ├── docker/                         # Docker deployment (Phase 5)
-│   ├── Dockerfile
-│   ├── setup.sh
-│   └── skills-generic/
 ├── elixir/
 │   ├── mix.exs
 │   ├── lib/
@@ -331,33 +291,28 @@ conductor/
 │   │       │   ├── codex_adapter.ex           # ★ Codex wrapper (Phase 1)
 │   │       │   ├── hermes_adapter.ex          # ★ Hermes CLI driver (Phase 2)
 │   │       │   └── codex/
-│   │       │       ├── app_server.ex          # Codex JSON-RPC (moved Phase 1)
-│   │       │       └── dynamic_tool.ex        # Codex tool injection (moved Phase 1)
+│   │       │       ├── app_server.ex          # Codex JSON-RPC (moved)
+│   │       │       └── dynamic_tool.ex        # Codex tool injection (moved)
 │   │       ├── conductor_config.ex            # ★ conductor.yaml parser (Phase 3)
 │   │       ├── multi_repo_supervisor.ex       # ★ DynamicSupervisor (Phase 3)
 │   │       ├── repo_supervisor.ex             # ★ Per-repo supervisor (Phase 3)
 │   │       ├── config.ex                      # ★ Process-dict aware (Phase 1+3)
-│   │       ├── config/
-│   │       │   └── schema.ex                  # ★ agent.kind + hermes fields (Phase 2)
-│   │       ├── orchestrator.ex                # ★ agent_* fields + multi-repo (Phase 1+3)
+│   │       ├── config/schema.ex               # ★ agent.kind + hermes (Phase 2)
+│   │       ├── orchestrator.ex                # ★ agent_* + multi-repo (Phase 1+3)
 │   │       ├── workflow_store.ex              # ★ Named instances (Phase 3)
-│   │       ├── workspace.ex                   # Workspace lifecycle
-│   │       ├── prompt_builder.ex              # Issue → prompt rendering
-│   │       ├── tracker.ex                     # Tracker abstraction
-│   │       ├── tracker/
-│   │       │   └── ...                        # Linear adapter
 │   │       ├── cli.ex                         # ★ --conductor-config (Phase 3)
 │   │       ├── status_dashboard.ex            # ★ Generic metrics (Phase 1)
-│   │       ├── http_server.ex                 # Phoenix server
+│   │       ├── workspace.ex
+│   │       ├── prompt_builder.ex
+│   │       ├── tracker.ex
 │   │       └── ...
 │   ├── lib/symphony_elixir_web/
 │   │   ├── presenter.ex                       # ★ agent_* fields (Phase 2)
-│   │   ├── live/dashboard_live.ex             # ★ agent_totals (Phase 2)
-│   │   └── ...
+│   │   └── live/dashboard_live.ex             # ★ agent_totals (Phase 2)
 │   └── test/
 │       └── symphony_elixir/
 │           ├── hermes_adapter_test.exs        # ★ 17 tests (Phase 2)
-│           └── ...                            # Existing tests (all passing)
+│           └── ...
 ```
 
 ★ = Modified or created by Conductor (Phases 1–3)
@@ -366,44 +321,28 @@ conductor/
 
 ## Future Architecture (Phase 4+)
 
-```
-┌──────────────────────────────────────────────────────┐
-│                  CONDUCTOR                            │
-│                                                      │
-│  ┌────────────────────────────────────────────────┐  │
-│  │  Elixir BEAM (Orchestration)                    │  │
-│  │  Orchestrator(s) + WorkflowStore(s) + Dashboard │  │
-│  │           │                                     │  │
-│  │           │ HTTP /api/v1/state                   │  │
-│  │           ▼                                     │  │
-│  │  ┌──────────────────┐                           │  │
-│  │  │  Phoenix HTTP API │◄── JSON ──┐              │  │
-│  │  └──────────────────┘            │              │  │
-│  └──────────────────────────────────┼──────────────┘  │
-│                                     │                 │
-│  ┌──────────────────────────────────┼──────────────┐  │
-│  │  Python Sidecar (MCP Server)     │              │  │
-│  │                                  │              │  │
-│  │  Reads state from Phoenix API ───┘              │  │
-│  │  Exposes MCP tools:                             │  │
-│  │    conductor_list_repos                          │  │
-│  │    conductor_list_runs                           │  │
-│  │    conductor_dispatch                            │  │
-│  │    conductor_stop_run                            │  │
-│  │    conductor_pause_repo                          │  │
-│  │    conductor_set_agent                           │  │
-│  │                     │                            │  │
-│  │                     │ MCP (stdio or HTTP)        │  │
-│  └─────────────────────┼──────────────────────────┘  │
-│                        │                              │
-└────────────────────────┼──────────────────────────────┘
-                         │
-                         ▼
-                  ┌──────────────┐
-                  │  MCP Client  │
-                  │  (Hermes,    │
-                  │   Claude     │
-                  │   Desktop,   │
-                  │   Cursor)    │
-                  └──────────────┘
+```mermaid
+graph TB
+    subgraph Container["CONDUCTOR (Single Container)"]
+        subgraph Elixir["Elixir BEAM"]
+            Orchs["Orchestrator(s)"]
+            WStores["WorkflowStore(s)"]
+            Dash["Phoenix Dashboard"]
+            API["Phoenix HTTP API<br/>/api/v1/state"]
+        end
+
+        subgraph Python["Python Sidecar (MCP Server)"]
+            MCP["MCP Protocol Handler"]
+            Tools["Tools:<br/>conductor_list_repos<br/>conductor_list_runs<br/>conductor_dispatch<br/>conductor_stop_run<br/>conductor_pause_repo<br/>conductor_set_agent"]
+        end
+
+        API -->|"JSON"| MCP
+    end
+
+    MCP -->|"MCP (stdio or HTTP)"| Client
+
+    Client["MCP Client<br/>(Hermes, Claude Desktop, Cursor)"]
+
+    style Elixir fill:#3b1261,stroke:#7b2fbf
+    style Python fill:#14401d,stroke:#2d8a4e
 ```
