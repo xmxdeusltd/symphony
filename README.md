@@ -1,41 +1,80 @@
-# Symphony
+# Conductor
 
-Symphony turns project work into isolated, autonomous implementation runs, allowing teams to manage
-work instead of supervising coding agents.
+**Vendor-agnostic coding agent orchestrator.** Fork of [OpenAI Symphony](https://github.com/openai/symphony).
 
-[![Symphony demo video preview](.github/media/symphony-demo-poster.jpg)](.github/media/symphony-demo.mp4)
+Conductor makes the coding agent pluggable — swap between Codex, Hermes, or future agents without changing the orchestrator. It polls your issue tracker, creates isolated workspaces, and dispatches the agent of your choice.
 
-_In this [demo video](.github/media/symphony-demo.mp4), Symphony monitors a Linear board for work and spawns agents to handle the tasks. The agents complete the tasks and provide proof of work: CI status, PR review feedback, complexity analysis, and walkthrough videos. When accepted, the agents land the PR safely. Engineers do not need to supervise Codex; they can manage the work at a higher level._
+## What's Different from Symphony
 
-> [!WARNING]
-> Symphony is a low-key engineering preview for testing in trusted environments.
+| Feature | Symphony | Conductor |
+|---------|----------|-----------|
+| Coding agent | Codex only | Pluggable (Codex default, Hermes, extensible) |
+| Agent config | `codex:` in WORKFLOW.md | `agent:` with `kind:` selector |
+| Multi-repo | Single repo per instance | Multiple repos per instance (planned) |
+| MCP server | No | Planned — any MCP client can control Conductor |
+| Dashboard | Phoenix LiveView | Phoenix LiveView (generalized metrics) |
 
-## Running Symphony
+## Quick Start
 
-### Requirements
+Same as Symphony — see the [Symphony SPEC.md](SPEC.md) for full documentation.
 
-Symphony works best in codebases that have adopted
-[harness engineering](https://openai.com/index/harness-engineering/). Symphony is the next step --
-moving from managing coding agents to managing work that needs to get done.
+```bash
+cd elixir
+mise trust && mise install
+mise exec -- mix setup
+mise exec -- mix build
+mise exec -- ./bin/symphony /path/to/WORKFLOW.md --port 4000 \
+  --i-understand-that-this-will-be-running-without-the-usual-guardrails
+```
 
-### Option 1. Make your own
+### Using Hermes as the Agent
 
-Tell your favorite coding agent to build Symphony in a programming language of your choice:
+Set `agent.kind: hermes` in your WORKFLOW.md:
 
-> Implement Symphony according to the following spec:
-> https://github.com/openai/symphony/blob/main/SPEC.md
-
-### Option 2. Use our experimental reference implementation
-
-Check out [elixir/README.md](elixir/README.md) for instructions on how to set up your environment
-and run the Elixir-based Symphony implementation. You can also ask your favorite coding agent to
-help with the setup:
-
-> Set up Symphony for my repository based on
-> https://github.com/openai/symphony/blob/main/elixir/README.md
-
+```yaml
 ---
+agent:
+  kind: hermes
+  provider: anthropic
+  model: claude-sonnet-4
+  skills: [commit, push, linear]
+  toolsets: terminal,file,web
+  max_turns: 20
+# ... rest of config
+---
+```
+
+### Using Codex (Default)
+
+Existing Symphony WORKFLOW.md files work unchanged:
+
+```yaml
+---
+agent:
+  kind: codex
+  command: codex app-server
+  approval_policy: never
+  thread_sandbox: danger-full-access
+# ... rest of config
+---
+```
+
+Legacy `codex:` config key is also supported for backward compatibility.
+
+## Architecture
+
+The key abstraction is `AgentAdapter` — a behaviour that each agent backend implements:
+
+```
+Orchestrator → AgentAdapter.start_session()
+             → AgentAdapter.run_turn()
+             → AgentAdapter.stop_session()
+```
+
+See `lib/symphony_elixir/agent_adapter.ex` for the behaviour definition.
 
 ## License
 
-This project is licensed under the [Apache License 2.0](LICENSE).
+Apache 2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+Original work Copyright 2025 OpenAI. Modifications by xmxdeusltd.

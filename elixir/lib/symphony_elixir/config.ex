@@ -83,6 +83,11 @@ defmodule SymphonyElixir.Config do
     end
   end
 
+  @spec agent_adapter() :: module()
+  def agent_adapter do
+    SymphonyElixir.Agents.CodexAdapter
+  end
+
   @spec server_port() :: non_neg_integer() | nil
   def server_port do
     case Application.get_env(:symphony_elixir, :server_port_override) do
