@@ -1,6 +1,6 @@
 # Conductor Architecture
 
-*Auto-maintained. Last updated: 2026-03-25 (Phase 3 complete)*
+*Auto-maintained. Last updated: 2026-03-25 (Post-Phase 3 refactor — no singleton)*
 
 ---
 
@@ -12,13 +12,9 @@ graph TB
         subgraph AppSup["Application Supervisor (one_for_one)"]
             PubSub["Phoenix.PubSub"]
             TaskSup["Task.Supervisor<br/>(agent workers)"]
+            WS_Default["WorkflowStore<br/>(default singleton)"]
             HTTP["HTTP Server<br/>(Phoenix)"]
             Dashboard["Status Dashboard<br/>(LiveView)"]
-
-            subgraph SingleRepo["Single-Repo Mode"]
-                WS_S["WorkflowStore<br/>(singleton)"]
-                Orch_S["Orchestrator<br/>(singleton)"]
-            end
 
             subgraph MRS["MultiRepoSupervisor (DynamicSupervisor)"]
                 subgraph Repo1["RepoSupervisor: api-service"]
@@ -39,17 +35,15 @@ graph TB
         end
     end
 
-    style SingleRepo fill:#2d5016,stroke:#4a8529
     style MRS fill:#1a3a5c,stroke:#2d6ca3
     style Repo1 fill:#1e3048,stroke:#2d6ca3
     style Repo2 fill:#1e3048,stroke:#2d6ca3
 ```
 
-**Two modes:**
-- **Single-repo mode** (backward compat): Singleton WorkflowStore + Orchestrator. Activated by: `symphony WORKFLOW.md`
-- **Multi-repo mode**: MultiRepoSupervisor spawns per-repo process pairs. Activated by: `symphony --conductor-config conductor.yaml`
+**All repos go through MultiRepoSupervisor.** Even a single `symphony WORKFLOW.md` invocation wraps as `start_repo(name: "default")`. No singleton orchestrator.
 
-Both can coexist — the singleton handles one repo, MultiRepoSupervisor handles additional repos.
+- **Single WORKFLOW.md**: `symphony WORKFLOW.md` → starts one repo named "default"
+- **Multi-repo**: `symphony --conductor-config conductor.yaml` → starts N repos
 
 ---
 
@@ -193,14 +187,12 @@ sequenceDiagram
 flowchart TD
     Call["Config.settings!() called"] --> Check{"Process.get<br/>(:conductor_workflow_store)"}
 
-    Check -->|nil<br/>single-repo mode| WC["Workflow.current()"]
-    WC --> WS_Single["WorkflowStore (singleton)<br/>reads Application.get_env<br/>(:workflow_file_path)"]
-
-    Check -->|":conductor_workflow_&lt;name&gt;"<br/>multi-repo mode| WCN["WorkflowStore.current(name)"]
+    Check -->|":conductor_workflow_&lt;name&gt;"| WCN["WorkflowStore.current(name)"]
     WCN --> WS_Named["Named GenServer<br/>reads its own WORKFLOW.md path"]
 
-    WS_Single --> Parse["Schema.parse(config)"]
-    WS_Named --> Parse
+    Check -->|not set| Error["raise: called outside repo context"]
+
+    WS_Named --> Parse["Schema.parse(config)"]
     Parse --> Settings["Typed settings struct"]
 ```
 
