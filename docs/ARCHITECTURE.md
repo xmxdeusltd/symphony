@@ -1,6 +1,6 @@
 # Conductor Architecture
 
-*Auto-maintained. Last updated: 2026-03-25 (Phase 4 complete — MCP sidecar)*
+*Auto-maintained. Last updated: 2026-03-25 (All phases complete)*
 
 ---
 
@@ -277,7 +277,7 @@ conductor/
 │   │   ├── client.py               # HTTP client for Phoenix API
 │   │   └── server.py               # MCP server (5 tools, stdio)
 │   └── tests/test_server.py        # 13 tests
-├── docker/                         # Docker deployment (Phase 5)
+├── docker/                         # ★ Docker deployment (Phase 5)
 ├── elixir/
 │   ├── mix.exs
 │   ├── lib/
