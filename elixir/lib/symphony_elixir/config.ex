@@ -85,7 +85,10 @@ defmodule SymphonyElixir.Config do
 
   @spec agent_adapter() :: module()
   def agent_adapter do
-    SymphonyElixir.Agents.CodexAdapter
+    case settings!().agent.kind do
+      "hermes" -> SymphonyElixir.Agents.HermesAdapter
+      _ -> SymphonyElixir.Agents.CodexAdapter
+    end
   end
 
   @spec server_port() :: non_neg_integer() | nil

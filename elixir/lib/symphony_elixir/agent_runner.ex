@@ -77,10 +77,20 @@ defmodule SymphonyElixir.AgentRunner do
 
   defp run_agent_turns(workspace, issue, agent_update_recipient, opts, worker_host) do
     adapter = agent_adapter()
-    max_turns = Keyword.get(opts, :max_turns, Config.settings!().agent.max_turns)
+    settings = Config.settings!()
+    max_turns = Keyword.get(opts, :max_turns, settings.agent.max_turns)
     issue_state_fetcher = Keyword.get(opts, :issue_state_fetcher, &Tracker.fetch_issue_states_by_ids/1)
 
-    with {:ok, session} <- adapter.start_session(workspace, worker_host: worker_host) do
+    # Build hermes config from settings (used only by HermesAdapter, ignored by CodexAdapter)
+    hermes_config = %{
+      provider: settings.agent.hermes_provider,
+      model: settings.agent.hermes_model,
+      skills: settings.agent.hermes_skills,
+      toolsets: settings.agent.hermes_toolsets,
+      stall_timeout_ms: settings.codex.stall_timeout_ms
+    }
+
+    with {:ok, session} <- adapter.start_session(workspace, worker_host: worker_host, hermes_config: hermes_config) do
       try do
         do_run_agent_turns(adapter, session, workspace, issue, agent_update_recipient, opts, issue_state_fetcher, 1, max_turns)
       after
@@ -101,13 +111,16 @@ defmodule SymphonyElixir.AgentRunner do
            ) do
       Logger.info("Completed agent run for #{issue_context(issue)} session_id=#{turn_session[:session_id]} workspace=#{workspace} turn=#{turn_number}/#{max_turns}")
 
+      # Update session with any new data from the turn (e.g. Hermes session_id for --resume)
+      updated_session = Map.merge(app_session, Map.take(turn_session, [:session_id]))
+
       case continue_with_issue?(issue, issue_state_fetcher) do
         {:continue, refreshed_issue} when turn_number < max_turns ->
           Logger.info("Continuing agent run for #{issue_context(refreshed_issue)} after normal turn completion turn=#{turn_number}/#{max_turns}")
 
           do_run_agent_turns(
             adapter,
-            app_session,
+            updated_session,
             workspace,
             refreshed_issue,
             agent_update_recipient,
