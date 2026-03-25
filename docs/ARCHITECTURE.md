@@ -1,6 +1,6 @@
 # Conductor Architecture
 
-*Auto-maintained. Last updated: 2026-03-25 (Post-Phase 3 refactor — no singleton)*
+*Auto-maintained. Last updated: 2026-03-25 (Phase 4 complete — MCP sidecar)*
 
 ---
 
@@ -271,6 +271,12 @@ conductor/
 │       └── review/SKILL.md
 ├── .codex/
 │   └── skills/                     # Codex-specific skills (upstream)
+├── mcp-sidecar/                     # ★ Python MCP server (Phase 4)
+│   ├── pyproject.toml
+│   ├── conductor_mcp/
+│   │   ├── client.py               # HTTP client for Phoenix API
+│   │   └── server.py               # MCP server (5 tools, stdio)
+│   └── tests/test_server.py        # 13 tests
 ├── docker/                         # Docker deployment (Phase 5)
 ├── elixir/
 │   ├── mix.exs
@@ -311,7 +317,7 @@ conductor/
 
 ---
 
-## Future Architecture (Phase 4+)
+## MCP Sidecar Architecture (Phase 4 — Implemented)
 
 ```mermaid
 graph TB
